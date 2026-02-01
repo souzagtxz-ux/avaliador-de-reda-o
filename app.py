@@ -1,44 +1,49 @@
 import streamlit as st
-import google.generativeai as genai
+from groq import Groq
+import pytesseract
 from PIL import Image
+import numpy as np
 
 # Configuração da página
-st.set_page_config(page_title="Corretor de Redação IA", page_icon="📝")
+st.set_page_config(page_title="Corretor Groq", page_icon="⚡")
 
-st.title("📝 Corretor de Redação Inteligente")
-st.subheader("Tire uma foto e receba sua nota em segundos")
+st.title("⚡ Corretor de Redação Ultra-Rápido")
 
-# Configurar a API Key (No Streamlit Cloud, use Secrets)
-os_api_key = st.sidebar.text_input("Cole sua Google API Key aqui", type="password")
+# Configuração do Cliente Groq
+# Nota: No Streamlit Cloud, oculte sua chave em "Secrets"
+client = Groq(api_key="SUA_CHAVE_AQUI")
 
-if os_api_key:
-    genai.configure(api_key=os_api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+foto = st.camera_input("Tire foto da sua redação")
 
-    # Opção de tirar foto ou carregar arquivo
-    foto = st.camera_input("Capture a foto da sua redação")
+if foto:
+    img = Image.open(foto)
+    st.image(img, caption="Imagem carregada", width=300)
     
-    if foto:
-        img = Image.open(foto)
-        st.image(img, caption="Redação capturada", use_container_width=True)
+    with st.spinner("Lendo texto e avaliando..."):
+        # 1. Extrair texto da imagem (OCR)
+        # Certifique-se de ter o tesseract instalado no ambiente
+        texto_extraido = pytesseract.image_to_string(img, lang='por')
         
-        if st.button("Avaliar Redação"):
-            with st.spinner("Analisando caligrafia e conteúdo..."):
-                # O Prompt mágico
-                prompt = """
-                Analise esta imagem de uma redação manuscrita. 
-                1. Transcreva o texto (se possível).
-                2. Dê uma nota de 0 a 100% baseada em critérios de gramática, estrutura e coesão.
-                3. Aponte exatamente onde o aluno deve melhorar.
-                4. Seja motivador, mas honesto.
-                Retorne a nota em destaque.
-                """
-                
-                # Envia a imagem diretamente para a IA
-                response = model.generate_content([prompt, img])
-                
-                st.markdown("---")
-                st.markdown("### 📊 Resultado da Avaliação")
-                st.write(response.text)
-else:
-    st.warning("Por favor, insira sua API Key do Google Gemini na barra lateral para começar.")
+        if len(texto_extraido.strip()) < 10:
+            st.error("Não consegui ler o texto. Tente tirar uma foto mais nítida e de perto.")
+        else:
+            # 2. Mandar para o Groq analisar
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Você é um professor corretor de redações. Avalie o texto e dê uma nota de 0 a 100%. Aponte erros e melhorias."
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Analise esta redação:\n\n{texto_extraido}",
+                    }
+                ],
+                model="llama3-8b-8192", # Modelo rápido do Groq
+            )
+
+            # 3. Exibir resultado
+            resultado = chat_completion.choices[0].message.content
+            st.success("Avaliação Concluída!")
+            st.markdown("### 📝 Análise da IA")
+            st.write(resultado)
